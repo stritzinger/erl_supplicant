@@ -206,28 +206,15 @@ gen_chunk_header(PktLen, _RemainingFragments) ->
 
 
 trigger_tls_conversation() ->
-    {ok, ClientCertFile} = application:get_env(erl_supplicant, certfile),
-    {ok, KeyFile} = application:get_env(erl_supplicant, keyfile),
-    {ok, KeyPassword} = application:get_env(erl_supplicant, password),
-    {ok, CA_CertFile} = application:get_env(erl_supplicant, cacertfile),
-
+    UserOpts = application:get_env(erl_supplicant, eap_tls, []),
     CustomTransport = {cb_info, {
         ?MODULE,
         eap,        % Data Tag
         eap_stop,
         eap_error,
         eap_passive}},
-
-    TLS_Opts = [
-        {verify, verify_peer},
-        {certfile, ClientCertFile},
-        {keyfile, KeyFile},
-        {password, KeyPassword},
-        {cacertfile, CA_CertFile},
-        CustomTransport
-    ],
-
-    {ok, CN} = application:get_env(erl_supplicant, server_cn),
+    TLS_Opts = [CustomTransport | UserOpts],
+    {ok, CN} = application:get_env(erl_supplicant, server_common_name),
 
     spawn(fun() ->
         Ret = ssl:connect(CN, fake_port, TLS_Opts),

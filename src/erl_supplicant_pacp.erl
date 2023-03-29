@@ -102,7 +102,7 @@ handle_event(enter, _, authenticating,
 handle_event(cast, eap_timeout, authenticating, #data{retry_count = RC} = D) ->
     case RC < D#data.retry_max of
         true ->
-            ?LOG_WARNING("EAP Timeout"),
+            ?LOG_INFO("EAP Timeout, retrying ..."),
             {repeat_state, D};
         false ->
             {next_state, unauthenticated, D}

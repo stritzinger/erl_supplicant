@@ -8,9 +8,9 @@
 -export([eap_msg/1]).
 
 -define(ETH_P_ALL, 16#0300).
--include("../_build/default/lib/procket/include/packet.hrl").
+-include_lib("procket/include/packet.hrl").
 -define(EAPOL, 16#888e).
--include("../_build/default/lib/pkt/include/pkt_802_1x.hrl").
+-include_lib("pkt/include/pkt_802_1x.hrl").
 
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/assert.hrl").

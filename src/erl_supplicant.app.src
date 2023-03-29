@@ -5,7 +5,9 @@
   {mod, {erl_supplicant_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    procket,
+    pkt
    ]},
   {env,[]},
   {modules, []},

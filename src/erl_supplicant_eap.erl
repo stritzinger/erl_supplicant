@@ -15,11 +15,14 @@
 
 -record(state, {
     config          :: map(),
-    eap_stop        :: boolean(), % eap_start is implied if false,
+    eap_state       :: start | stop | timeout | fail | success,
+    timeout_ref,
     % This id is just for active supplicant requests,
     % maybe delete, never used?
     request_id = 0
 }).
+
+-define(EAP_TIMEOUT, 30_000).
 
 % EAP Codes
 -define(Request, 1).
@@ -56,14 +59,15 @@ init(Opts) ->
 
 handle_call(eap_stop, _, S) ->
     erl_supplicant_eap_tls:stop(),
-    {reply, ok, S#state{eap_stop = true}};
+    {reply, ok, clear_timer(S#state{eap_state = stop})};
 handle_call(eap_start, _, S) ->
-    {reply, ok, S#state{eap_stop = false}};
+    {ok, Tref} = timer:send_after(?EAP_TIMEOUT, timeout),
+    {reply, ok, S#state{eap_state = start, timeout_ref = Tref}};
 handle_call(Msg, From, S) ->
     ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),
     {reply, ok, S}.
 
-handle_cast(_, #state{eap_stop = true} = S) ->
+handle_cast(_, #state{eap_state = true} = S) ->
     {noreply, S};
 handle_cast({rx_msg, Binary}, S) ->
     {noreply, handle_eap_msg(Binary, S)};
@@ -73,8 +77,11 @@ handle_cast(Msg, S) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),
     {noreply, S}.
 
+handle_info(timeout, #state{eap_state = start} = S) ->
+    erl_supplicant_pacp:eap_timeout(),
+    {noreply, S#state{eap_state = timeout}};
 handle_info(Msg, S) ->
-    ?LOG_NOTICE("Unexpected error ~p",[Msg]),
+    ?LOG_WARNING("Unexpected info ~p",[Msg]),
     {noreply, S}.
 
 % INTERNALS --------------------------------------------------------------------
@@ -103,11 +110,11 @@ process_msg(?Response, <<Type:8/unsigned, TypeData/binary>>, Id, S) ->
 process_msg(?Success, <<>>, Id, S) ->
     ?LOG_NOTICE("EAP SUCCESS:  ~p", [Id]),
     erl_supplicant_pacp:eap_success(),
-    S;
+    clear_timer(S#state{eap_state = success});
 process_msg(?Failure, <<>>, Id, S) ->
     ?LOG_NOTICE("EAP FAILURE:  ~p", [Id]),
     erl_supplicant_pacp:eap_fail(),
-    S.
+    clear_timer(S#state{eap_state = fail}).
 
 handle_request(?Identify, _, Id, #state{config = Cfg} = S) ->
     reply(?Identify, [maps:get(identity, Cfg)], Id),
@@ -146,3 +153,7 @@ eap_decode(<<Code:8/unsigned,
     {Code, EAP_Data, Identifier};
 eap_decode(_) ->
     bad_eap.
+
+clear_timer(#state{timeout_ref = Tref} = S) ->
+    timer:cancel(Tref),
+    S#state{timeout_ref = undefined}.
