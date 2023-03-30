@@ -18,15 +18,11 @@
 -include_lib("kernel/include/logger.hrl").
 
 -record(data, {
-    enabled         :: boolean(),
-    authenticated   :: boolean(),
-    failed          :: boolean(),
     retry_count     :: non_neg_integer(),
     retry_max       :: non_neg_integer()
 }).
 
 -define(HELD_PERIOD, 60_000). % 60 seconds is the default
--define(RETRY_TIMEOUT, 10_000).
 
 % API
 
@@ -48,9 +44,6 @@ eap_fail() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 
 init(_Opts) ->
     Data = #data{
-        enabled = false,
-        authenticated = false,
-        failed = false,
         retry_count = 0,
         retry_max = 5
     },
@@ -75,14 +68,12 @@ handle_event(cast, enable, initialize, Data) ->
 % UNAUTHENTICATED
 handle_event(enter, _, unauthenticated,
                         #data{retry_count = RetryCount,
-                              failed = F,
                               retry_max = RetryMax} = Data) ->
-    Data2 = Data#data{
-        enabled = true,
-        authenticated = false,
-        failed = F or (RetryCount >= RetryMax),
-        retry_count = 0
-    },
+    case RetryCount >= RetryMax of
+        true -> erl_supplicant:failed();
+        _ -> ok
+    end,
+    Data2 = Data#data{retry_count = 0},
     ?LOG_INFO("UNAUTHENTICATED"),
     {keep_state, Data2};
 handle_event(cast, authenticate, unauthenticated, Data) ->
@@ -107,6 +98,8 @@ handle_event(cast, eap_timeout, authenticating, #data{retry_count = RC} = D) ->
         false ->
             {next_state, unauthenticated, D}
     end;
+handle_event(cast, logoff, authenticating, Data) ->
+    {next_state, logoff, Data};
 handle_event(cast, eap_success, authenticating, Data) ->
     {next_state, authenticated, Data};
 handle_event(cast, eap_fail, authenticating, Data) ->
@@ -114,22 +107,17 @@ handle_event(cast, eap_fail, authenticating, Data) ->
 
 % HELD
 handle_event(enter, _, held, Data) ->
-    Data2 = Data#data{
-        failed = true,
-        authenticated = false
-    },
+    erl_supplicant:failed(),
     ?LOG_INFO("HELD"),
-    {keep_state, Data2, [{state_timeout, ?HELD_PERIOD, end_hold}]};
+    {keep_state, Data, [{state_timeout, ?HELD_PERIOD, end_hold}]};
 handle_event(state_timeout, end_hold, held, Data) ->
     {next_state, unauthenticated, Data};
 
 % AUTHENTICATED
 handle_event(enter, _, authenticated, Data) ->
-    Data2 = Data#data{
-        authenticated = true,
-        retry_count = 0
-    },
+    Data2 = Data#data{retry_count = 0},
     ?LOG_INFO("AUTHENTICATED"),
+    erl_supplicant:authenticated(),
     {keep_state, Data2};
 handle_event(cast, eap_fail, authenticated, Data) ->
     {next_state, authenticating, Data};
@@ -148,4 +136,5 @@ handle_event(state_timeout, uct, logoff, Data) ->
 handle_event(E, Content, S, Data) ->
     ?LOG_WARNING("Unhandled Event = ~p, Content = ~p, S = ~p",[E, Content, S]),
     {keep_state, Data}.
+
 % INTERNALS --------------------------------------------------------------------

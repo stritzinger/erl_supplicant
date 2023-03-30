@@ -34,7 +34,7 @@
     fragments = []
 }).
 % Find clever way to determinate an appropriate MTU
-% Assuming an MTU of 1024 bytes,
+% Assuming an MTU of 1024 bytes:
 % -14 for the Ethernet II header
 % -4 for the 802.1x header
 % -5 for the EAP header

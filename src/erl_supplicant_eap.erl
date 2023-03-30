@@ -14,15 +14,15 @@
 -include_lib("kernel/include/logger.hrl").
 
 -record(state, {
-    config          :: map(),
+    identity        :: string(),
     eap_state       :: start | stop | timeout | fail | success,
-    timeout_ref,
+    timeout_ref
     % This id is just for active supplicant requests,
     % maybe delete, never used?
-    request_id = 0
+    % request_id = 0
 }).
 
--define(EAP_TIMEOUT, 30_000).
+-define(EAP_TIMEOUT, 10_000).
 
 % EAP Codes
 -define(Request, 1).
@@ -54,8 +54,8 @@ rx_msg(Binary) -> gen_server:cast(?MODULE, {?FUNCTION_NAME, Binary}).
 
 % gen_server CALLBACKS ---------------------------------------------------------
 
-init(Opts) ->
-    {ok, #state{config = Opts}}.
+init(#{identity := Identity}) ->
+    {ok, #state{identity = Identity}}.
 
 handle_call(eap_stop, _, S) ->
     erl_supplicant_eap_tls:stop(),
@@ -118,8 +118,8 @@ process_msg(?Failure, <<>>, Id, S) ->
     erl_supplicant_pacp:eap_fail(),
     clear_timer(S#state{eap_state = fail}).
 
-handle_request(?Identify, _, Id, #state{config = Cfg} = S) ->
-    reply(?Identify, [maps:get(identity, Cfg)], Id),
+handle_request(?Identify, _, Id, #state{identity = Identity} = S) ->
+    reply(?Identify, [Identity], Id),
     S;
 handle_request(?EAP_TLS, TypeData, Id, S) ->
     Reply = erl_supplicant_eap_tls:handle_request(TypeData),
