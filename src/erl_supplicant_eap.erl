@@ -67,12 +67,14 @@ handle_call(Msg, From, S) ->
     ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),
     {reply, ok, S}.
 
-handle_cast(_, #state{eap_state = true} = S) ->
-    {noreply, S};
-handle_cast({rx_msg, Binary}, S) ->
+
+handle_cast({rx_msg, Binary}, #state{eap_state = start} = S) ->
     {noreply, handle_eap_msg(Binary, S)};
 % handle_cast({tx_msg, Type, Binary}, S) ->
 %     {noreply, send_eap_request(Type, Binary, S)};
+handle_cast({rx_msg, _}, #state{eap_state = EAP} = S) ->
+    ?LOG_NOTICE("Ignoring eap msg in eap_state: ~p", [EAP]),
+    {noreply, S};
 handle_cast(Msg, S) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),
     {noreply, S}.

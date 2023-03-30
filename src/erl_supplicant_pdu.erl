@@ -1,5 +1,5 @@
 % The Protocol Data Unit
-% Handles trasmission and reception of EAPOL data packets
+% Handles trasmission and reception of EAPoL data packets
 -module(erl_supplicant_pdu).
 
 -export([start_link/1]).
@@ -15,8 +15,14 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
--define(NEAREST_NON_TPMR_BRIDGE,
-        <<16#01, 16#80, 16#c2, 16#00, 16#00, 16#03>>).
+-define(dot1Q, 16#01, 16#80, 16#c2, 16#00, 16#00).
+% From top to bottom:
+% the least filtered to the most filtered MAC destination address for eapol PDUs
+-define(EDE_CC_PEP_ADDR, <<?dot1Q, 16#1f>>).
+-define(NEAREST_CUSTOMER_BRIDGE, <<?dot1Q, 16#00>>).
+-define(EDE_SS_PEP_ADDR, <<?dot1Q, 16#0b>>).
+-define(NEAREST_NON_TPMR_BRIDGE, <<?dot1Q, 16#03>>).
+-define(NEAREST_BRIDGE, <<?dot1Q, 16#0e>>).
 
 -record(state, {
     port,               % erlang port
