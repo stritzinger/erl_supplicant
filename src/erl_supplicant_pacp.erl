@@ -121,6 +121,9 @@ handle_event(enter, _, authenticated, Data) ->
     {keep_state, Data2};
 handle_event(cast, eap_fail, authenticated, Data) ->
     {next_state, authenticating, Data};
+handle_event(cast, eap_success, authenticated, _) ->
+    ?LOG_INFO("EAP AUTHENTICATION RENEWAL"),
+    keep_state_and_data;
 handle_event(cast, logoff, authenticated, Data) ->
     {next_state, logoff, Data};
 
@@ -134,7 +137,7 @@ handle_event(state_timeout, uct, logoff, Data) ->
     {next_state, unauthenticated, Data};
 
 handle_event(E, Content, S, Data) ->
-    ?LOG_WARNING("Unhandled Event = ~p, Content = ~p, S = ~p",[E, Content, S]),
+    ?LOG_WARNING("PACP Unhandled Event = ~p, Content = ~p, S = ~p",[E, Content, S]),
     {keep_state, Data}.
 
 % INTERNALS --------------------------------------------------------------------

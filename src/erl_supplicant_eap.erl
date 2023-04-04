@@ -91,7 +91,7 @@ handle_info(Msg, S) ->
 
 % send_eap_request(Type, TypeData, #state{request_id = ID} = S) ->
 %     NewID = ID +1,
-%     ?LOG_NOTICE("EAP requesting ~p", [NewID]),
+%     ?LOG_DEBUG("EAP requesting ~p", [NewID]),
 %     Binary = eap_encode(?Request, list_to_binary([Type | TypeData]), NewID),
 %     erl_supplicant_pdu:eap_msg(Binary),
 %     S#state{request_id = NewID}.
@@ -105,17 +105,18 @@ handle_eap_msg(Binary, S) ->
     end.
 
 process_msg(?Request, <<Type:8/unsigned, TypeData/binary>>, Id, S) ->
-    ?LOG_NOTICE("EAP request ~p type: ~p", [Id, Type]),
+    ?LOG_DEBUG("EAP request ~p type: ~p", [Id, Type]),
     handle_request(Type, TypeData, Id, S);
 process_msg(?Response, <<Type:8/unsigned, TypeData/binary>>, Id, S) ->
-    ?LOG_NOTICE("EAP responce ~p type: ~p", [Id, Type]),
+    ?LOG_DEBUG("EAP responce ~p type: ~p", [Id, Type]),
     handle_responce(Type, TypeData, Id, S);
 process_msg(?Success, <<>>, Id, S) ->
-    ?LOG_NOTICE("EAP SUCCESS:  ~p", [Id]),
+    ?LOG_DEBUG("EAP SUCCESS:  ~p", [Id]),
     erl_supplicant_pacp:eap_success(),
+    erl_supplicant_eap_tls:stop(),
     clear_timer(S#state{eap_state = success});
 process_msg(?Failure, <<>>, Id, S) ->
-    ?LOG_NOTICE("EAP FAILURE:  ~p", [Id]),
+    ?LOG_DEBUG("EAP FAILURE:  ~p", [Id]),
     erl_supplicant_pacp:eap_fail(),
     clear_timer(S#state{eap_state = fail}).
 
@@ -138,7 +139,7 @@ handle_responce(?EAP_TLS, _TypeData, _Id, _S) ->
     error(not_implemented).
 
 reply(Type, Args, Id) ->
-    ?LOG_NOTICE("EAP replying ~p", [Id]),
+    ?LOG_DEBUG("EAP replying ~p", [Id]),
     Binary = eap_encode(?Response, list_to_binary([Type | Args]), Id),
     erl_supplicant_pdu:eap_msg(Binary).
 

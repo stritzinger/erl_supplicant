@@ -1,7 +1,12 @@
 -module(erl_supplicant).
 
--export([start_link/0]).
+-export([start_link/1]).
+-export([authenticated/0]).
 
+% Public API
+-export([authenticate/0]).
+
+% Internal API
 -export([authenticated/0]).
 -export([failed/0]).
 
@@ -12,8 +17,10 @@
 
 % API
 
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+start_link(Opts) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Opts, []).
+
+authenticate() -> gen_server:cast(?MODULE, ?FUNCTION_NAME).
 
 authenticated() -> gen_server:cast(?MODULE, ?FUNCTION_NAME).
 
@@ -22,15 +29,21 @@ failed() -> gen_server:cast(?MODULE, ?FUNCTION_NAME).
 
 % gen_server CALLBACKS ---------------------------------------------------------
 
-init([]) ->
+init(#{auto := Auto}) ->
     erl_supplicant_pacp:enable(),
-    erl_supplicant_pacp:authenticate(),
+    case Auto of
+        true -> erl_supplicant_pacp:authenticate();
+        false -> ok
+    end,
     {ok, init}.
 
 handle_call(Msg, From, State) ->
     ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),
     {reply, ok, State}.
 
+handle_cast(authenticate, State) ->
+    erl_supplicant_pacp:authenticate(),
+    {noreply, State};
 handle_cast(authenticated, State) ->
     % Do something here?
     {noreply, State};

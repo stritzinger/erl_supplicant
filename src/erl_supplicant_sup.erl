@@ -20,14 +20,13 @@ init([]) ->
     SupFlags = #{strategy => one_for_all},
     {ok, Interface} = application:get_env(erl_supplicant, interface),
     {ok, Identity} = application:get_env(erl_supplicant, identity),
-    ProtocolDataUnitOpts = #{interface => Interface},
-    EAPOpts = #{identity => Identity},
+    Auto = application:get_env(erl_supplicant, auto, true),
     ChildSpecs = [
-        worker(erl_supplicant_pdu, [ProtocolDataUnitOpts]),
+        worker(erl_supplicant_pdu, [#{interface => Interface}]),
         worker(erl_supplicant_eap_tls, []),
-        worker(erl_supplicant_eap, [EAPOpts]),
+        worker(erl_supplicant_eap, [#{identity => Identity}]),
         worker(erl_supplicant_pacp, [#{}]),
-        worker(erl_supplicant, [])
+        worker(erl_supplicant, [#{auto => Auto}])
     ],
     {ok, {SupFlags, ChildSpecs}}.
 

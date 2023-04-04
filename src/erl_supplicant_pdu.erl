@@ -65,11 +65,11 @@ handle_call(Msg, From, State) ->
     {reply, ok, State}.
 
 handle_cast(tx_eapol_start, State) ->
-    ?LOG_NOTICE("EAPoL Start"),
+    ?LOG_INFO("EAPoL Start"),
     do_eapol_send(?EAPOL_START, <<>>, State),
     {noreply, State};
 handle_cast(tx_eapol_logoff, State) ->
-    ?LOG_NOTICE("EAPoL LogOff"),
+    ?LOG_INFO("EAPoL LogOff"),
     do_eapol_send(?EAPOL_LOGOFF, <<>>, State),
     {noreply, State};
 handle_cast({eap_msg, Binary}, State) ->
@@ -85,11 +85,11 @@ handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
             erl_supplicant_eap:rx_msg(Packet)
     catch
         error:E ->
-            ?LOG_ERROR("Error Decoding ~p",[E])
+            ?LOG_DEBUG("Error Decoding ~p",[E])
     end,
     {noreply, State};
 handle_info(Msg, State) ->
-    ?LOG_NOTICE("Unexpected info ~p",[Msg]),
+    ?LOG_ERROR("Unexpected info ~p",[Msg]),
     {noreply, State}.
 
 

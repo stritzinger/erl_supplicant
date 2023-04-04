@@ -1,3 +1,6 @@
+% This module tunnels a TLS conversation in EAP requests/replies
+% It manages fragmentation, splitting replyes and re-assembling requests.
+% It also mocks the inet and gen_tcp API to keep the OTP ssl app happy.
 -module(erl_supplicant_eap_tls).
 
 % API
@@ -33,7 +36,7 @@
     packet_length,
     fragments = []
 }).
-% Find clever way to determinate an appropriate MTU
+% Find a clever way to determinate an appropriate MTU.
 % Assuming an MTU of 1024 bytes:
 % -14 for the Ethernet II header
 % -4 for the 802.1x header
@@ -124,8 +127,8 @@ handle_cast(stop, #state{tls_connection = SSL_Socket}) ->
 handle_cast({send, _}, #state{pending_call = none,
                               tls_connection = undefined,
                               tls_client = undefined} = S) ->
-    % After calling ssl:close(),
-    % SSL sends an encrypted alert.
+    % After calling ssl:close() we ignore send commands
+    % Why?: SSL sends an encrypted alert to close the connection.
     % But for 802.1X Authentication this is not needed
     {noreply, S};
 handle_cast({send, SSL_Message}, S) ->
@@ -136,24 +139,24 @@ handle_cast(Msg, S) ->
     {noreply, S}.
 
 handle_info(Msg, S) ->
-    ?LOG_INFO("Unexpected info ~p",[Msg]),
+    ?LOG_ERROR("Unexpected info ~p",[Msg]),
     {noreply, S}.
 
 % INTERNAL --------------------------------------------------------------------
 
 do_handle_request(<<Flags:8/unsigned, _/binary>>, From, _S) when ?start(Flags) ->
-    ?LOG_INFO("EAP-TLS Start"),
+    ?LOG_DEBUG("EAP-TLS Start"),
     trigger_tls_conversation(),
     {noreply, #state{pending_call = From, fragments = []}};
 do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
                   _, #state{fragments = F} = S) when ?is_fragment(Flags) ->
-    ?LOG_INFO("EAP-TLS Fragment"),
+    ?LOG_DEBUG("EAP-TLS Fragment"),
     EmptyFlags = <<0:8/unsigned>>,
     {reply, EmptyFlags, S#state{packet_length = Length, fragments = [Data | F]}};
 do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
                   From, #state{fragments = F, tls_client = Pid} = S)
                   when ?end_fragment(Flags) ->
-    ?LOG_INFO("EAP-TLS Final"),
+    ?LOG_DEBUG("EAP-TLS Final"),
     Binary = list_to_binary(lists:reverse([Data|F])),
     ?assertMatch(Length, byte_size(Binary)),
     % send to tls process
@@ -162,7 +165,7 @@ do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
 do_handle_request(<<Flags:8/unsigned, _Data/binary>>, From, S) when ?is_ack(Flags) ->
     % empty requests are sent to receive the next fragment as reply
     % they act as ACK messages
-    ?LOG_INFO("EAP-TLS ACK"),
+    ?LOG_DEBUG("EAP-TLS ACK"),
     {noreply, send_chunk(S#state{pending_call = From})}.
 
 fragment_message(Message, #state{fragments = F} = S) ->
@@ -218,7 +221,7 @@ trigger_tls_conversation() ->
 
     spawn(fun() ->
         Ret = ssl:connect(CN, fake_port, TLS_Opts),
-        ?LOG_INFO("SSL returned! ~p",[Ret]),
+        ?LOG_DEBUG("EAP-TLS SSL app returned! ~p",[Ret]),
         case Ret of
             {ok, SSL} ->
                 EAP_TLS_proc = whereis(?MODULE),
