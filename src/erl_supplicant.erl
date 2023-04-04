@@ -45,10 +45,10 @@ handle_cast(authenticate, State) ->
     erl_supplicant_pacp:authenticate(),
     {noreply, State};
 handle_cast(authenticated, State) ->
-    % Do something here?
+    ?LOG_NOTICE("ERL_SUPP AUTHENTICATED"),
     {noreply, State};
 handle_cast(failed, State) ->
-    % Do something here?
+    ?LOG_NOTICE("ERL_SUPP FAILED AUTHENTICATION"),
     {noreply, State};
 handle_cast(Msg, State) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),

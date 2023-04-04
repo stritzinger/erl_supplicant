@@ -98,6 +98,8 @@ handle_event(cast, eap_timeout, authenticating, #data{retry_count = RC} = D) ->
         false ->
             {next_state, unauthenticated, D}
     end;
+handle_event(cast, authenticate, authenticating, _Data) ->
+    keep_state_and_data;
 handle_event(cast, logoff, authenticating, Data) ->
     {next_state, logoff, Data};
 handle_event(cast, eap_success, authenticating, Data) ->
@@ -112,6 +114,8 @@ handle_event(enter, _, held, Data) ->
     {keep_state, Data, [{state_timeout, ?HELD_PERIOD, end_hold}]};
 handle_event(state_timeout, end_hold, held, Data) ->
     {next_state, unauthenticated, Data};
+handle_event(cast, authenticate, held, _Data) ->
+    {keep_state_and_data, [postpone]};
 
 % AUTHENTICATED
 handle_event(enter, _, authenticated, Data) ->
