@@ -68,13 +68,14 @@ handle_call(Msg, From, S) ->
     {reply, ok, S}.
 
 
-handle_cast({rx_msg, Binary}, #state{eap_state = start} = S) ->
+handle_cast({rx_msg, _}, #state{eap_state = EAP} = S)
+when (EAP == stop) or (EAP == eap_fail) ->
+    ?LOG_INFO("Ignoring eap msg in eap_state: ~p", [EAP]),
+    {noreply, S};
+handle_cast({rx_msg, Binary}, #state{eap_state = _} = S) ->
     {noreply, handle_eap_msg(Binary, S)};
 % handle_cast({tx_msg, Type, Binary}, S) ->
 %     {noreply, send_eap_request(Type, Binary, S)};
-handle_cast({rx_msg, _}, #state{eap_state = EAP} = S) ->
-    ?LOG_NOTICE("Ignoring eap msg in eap_state: ~p", [EAP]),
-    {noreply, S};
 handle_cast(Msg, S) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),
     {noreply, S}.
@@ -83,7 +84,7 @@ handle_info(timeout, #state{eap_state = start} = S) ->
     erl_supplicant_pacp:eap_timeout(),
     {noreply, S#state{eap_state = timeout}};
 handle_info(Msg, S) ->
-    ?LOG_WARNING("Unexpected info ~p",[Msg]),
+    ?LOG_ERROR("Unexpected info ~p",[Msg]),
     {noreply, S}.
 
 % INTERNALS --------------------------------------------------------------------
