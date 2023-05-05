@@ -15,14 +15,13 @@
 
 -record(state, {
     identity        :: string(),
+    timeout         :: non_neg_integer(),
     eap_state       :: undefined | start | stop | timeout | fail | success,
     timeout_ref
     % This id is just for active supplicant requests,
     % maybe delete, never used?
     % request_id = 0
 }).
-
--define(EAP_TIMEOUT, 10_000).
 
 % EAP Codes
 -define(Request, 1).
@@ -54,14 +53,14 @@ rx_msg(Binary) -> gen_server:cast(?MODULE, {?FUNCTION_NAME, Binary}).
 
 % gen_server CALLBACKS ---------------------------------------------------------
 
-init(#{identity := Identity}) ->
-    {ok, #state{identity = Identity}}.
+init(#{identity := Identity, timeout := Timeout}) ->
+    {ok, #state{identity = Identity, timeout = Timeout}}.
 
 handle_call(eap_stop, _, S) ->
     erl_supplicant_eap_tls:stop(),
     {reply, ok, clear_timer(S#state{eap_state = stop})};
-handle_call(eap_start, _, S) ->
-    {ok, Tref} = timer:send_after(?EAP_TIMEOUT, timeout),
+handle_call(eap_start, _, #state{timeout = Timeout} = S) ->
+    {ok, Tref} = timer:send_after(Timeout, timeout),
     {reply, ok, S#state{eap_state = start, timeout_ref = Tref}};
 handle_call(Msg, From, S) ->
     ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),

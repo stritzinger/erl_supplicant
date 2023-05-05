@@ -9,7 +9,12 @@
     procket,
     pkt
    ]},
-  {env,[]},
+  {env,[
+    {auto, true},
+    {eap_timeout, 10_000},
+    {pacp_retry_max, 5},
+    {pacp_held_period, 60_000}
+  ]},
   {modules, []},
 
   {licenses, ["Apache-2.0"]},

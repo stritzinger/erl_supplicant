@@ -19,7 +19,8 @@
 
 -record(data, {
     retry_count     :: non_neg_integer(),
-    retry_max       :: non_neg_integer()
+    retry_max       :: non_neg_integer(),
+    held_period       :: non_neg_integer()
 }).
 
 -define(HELD_PERIOD, 60_000). % 60 seconds is the default
@@ -42,10 +43,10 @@ eap_success() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 eap_fail() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 % gen_statem CALLBACKS ---------------------------------------------------------
 
-init(_Opts) ->
+init(#{retry_max := Max}) ->
     Data = #data{
         retry_count = 0,
-        retry_max = 5
+        retry_max = Max
     },
     {ok, initialize, Data}.
 
@@ -108,10 +109,10 @@ handle_event(cast, eap_fail, authenticating, Data) ->
     {next_state, held, Data};
 
 % HELD
-handle_event(enter, _, held, Data) ->
+handle_event(enter, _, held, #data{held_period = HeldPeriod} = Data) ->
     erl_supplicant:failed(eap_fail),
     ?LOG_INFO("HELD"),
-    {keep_state, Data, [{state_timeout, ?HELD_PERIOD, end_hold}]};
+    {keep_state, Data, [{state_timeout, HeldPeriod, end_hold}]};
 handle_event(state_timeout, end_hold, held, Data) ->
     {next_state, unauthenticated, Data};
 handle_event(cast, authenticate, held, _Data) ->
