@@ -70,7 +70,7 @@ handle_event(enter, _, unauthenticated,
                         #data{retry_count = RetryCount,
                               retry_max = RetryMax} = Data) ->
     case RetryCount >= RetryMax of
-        true -> erl_supplicant:failed();
+        true -> erl_supplicant:failed(max_retry_reached);
         _ -> ok
     end,
     Data2 = Data#data{retry_count = 0},
@@ -109,7 +109,7 @@ handle_event(cast, eap_fail, authenticating, Data) ->
 
 % HELD
 handle_event(enter, _, held, Data) ->
-    erl_supplicant:failed(),
+    erl_supplicant:failed(eap_fail),
     ?LOG_INFO("HELD"),
     {keep_state, Data, [{state_timeout, ?HELD_PERIOD, end_hold}]};
 handle_event(state_timeout, end_hold, held, Data) ->

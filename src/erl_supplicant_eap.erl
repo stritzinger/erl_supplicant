@@ -15,7 +15,7 @@
 
 -record(state, {
     identity        :: string(),
-    eap_state       :: start | stop | timeout | fail | success,
+    eap_state       :: undefined | start | stop | timeout | fail | success,
     timeout_ref
     % This id is just for active supplicant requests,
     % maybe delete, never used?
@@ -132,10 +132,6 @@ handle_request(Type, _, _Id, S) ->
     S.
 
 handle_responce(_, _, _, _) ->
-    error(not_implemented);
-handle_responce(?Identify, _TypeData, _Id, _S) ->
-    error(not_implemented);
-handle_responce(?EAP_TLS, _TypeData, _Id, _S) ->
     error(not_implemented).
 
 reply(Type, Args, Id) ->

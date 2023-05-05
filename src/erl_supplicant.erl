@@ -8,24 +8,25 @@
 
 % Internal API
 -export([authenticated/0]).
--export([failed/0]).
+-export([failed/1]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("kernel/include/logger.hrl").
 
+
 % API
 
 start_link(Opts) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Opts, []).
 
--spec authenticate() -> success | failure.
+-spec authenticate() -> ok | {error, max_retry_reached | eap_fail}.
 authenticate() -> gen_server:call(?MODULE, ?FUNCTION_NAME, 60_000).
 
 authenticated() -> gen_server:cast(?MODULE, ?FUNCTION_NAME).
 
-failed() -> gen_server:cast(?MODULE, ?FUNCTION_NAME).
+failed(Reason) -> gen_server:cast(?MODULE, {?FUNCTION_NAME, Reason}).
 
 
 % gen_server CALLBACKS ---------------------------------------------------------
@@ -54,14 +55,14 @@ handle_cast(authenticated, State) ->
     case State of
         {authenticating, self} -> ok;
         {authenticating, Caller} ->
-            gen_server:reply(Caller, success)
+            gen_server:reply(Caller, ok)
     end,
     {noreply, State};
-handle_cast(failed, {authenticating, Caller}) ->
+handle_cast({failed, Reason}, {authenticating, Caller}) ->
     ?LOG_NOTICE("ERL_SUPP FAILED AUTHENTICATION"),
     case Caller of
         self -> ok;
-        _ -> gen_server:reply(Caller, failure)
+        _ -> gen_server:reply(Caller, {error, Reason})
     end,
     {noreply, []};
 handle_cast(Msg, State) ->
