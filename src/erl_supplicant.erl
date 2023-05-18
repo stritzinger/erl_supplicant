@@ -1,7 +1,6 @@
 -module(erl_supplicant).
 
 -export([start_link/1]).
--export([authenticated/0]).
 
 % Public API
 -export([authenticate/0]).

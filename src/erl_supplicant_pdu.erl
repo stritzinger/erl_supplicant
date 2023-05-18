@@ -2,10 +2,12 @@
 % Handles trasmission and reception of EAPoL data packets
 -module(erl_supplicant_pdu).
 
--export([start_link/1]).
--export([tx_eapol_start/0]).
--export([tx_eapol_logoff/0]).
--export([eap_msg/1]).
+-export([initialize/0]).
+-export([tx_eapol_start/1]).
+-export([tx_eapol_logoff/1]).
+-export([tx_eap_msg/2]).
+-export([handle_data/2]).
+-export([shutdown/1]).
 
 -define(ETH_P_ALL, 16#0300).
 -include_lib("procket/include/packet.hrl").
@@ -31,26 +33,10 @@
 }).
 
 
--behaviour(gen_server).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
-
 % API
 
-start_link(Opts) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, Opts, []).
-
-tx_eapol_start() ->
-    gen_server:cast(?MODULE, ?FUNCTION_NAME).
-
-tx_eapol_logoff() ->
-    gen_server:cast(?MODULE, ?FUNCTION_NAME).
-
-eap_msg(Binary) ->
-    gen_server:cast(?MODULE, {?FUNCTION_NAME, Binary}).
-
-% gen_server CALLBACKS ---------------------------------------------------------
-
-init(#{interface := Interface}) ->
+initialize() ->
+    {ok, Interface} = application:get_env(erl_supplicant, interface),
     {ok, Fd} = procket:open(0, [
         {protocol, ?ETH_P_ALL},
         {type, dgram},
@@ -60,26 +46,27 @@ init(#{interface := Interface}) ->
     Port = erlang:open_port({fd, Fd, Fd}, [binary, stream]),
     {ok, #state{port = Port, socket = Fd, interface_index = InterfaceIndex}}.
 
-handle_call(Msg, From, State) ->
-    ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),
-    {reply, ok, State}.
 
-handle_cast(tx_eapol_start, State) ->
+shutdown(#state{port = Port, socket = Fd}) ->
+    erlang:port_close(Port),
+    procket:close(Fd),
+    #state{}.
+
+tx_eapol_start(State) ->
     ?LOG_INFO("EAPoL Start"),
     do_eapol_send(?EAPOL_START, <<>>, State),
-    {noreply, State};
-handle_cast(tx_eapol_logoff, State) ->
+    State.
+
+tx_eapol_logoff(State) ->
     ?LOG_INFO("EAPoL LogOff"),
     do_eapol_send(?EAPOL_LOGOFF, <<>>, State),
-    {noreply, State};
-handle_cast({eap_msg, Binary}, State) ->
-    do_eapol_send(?EAP_PACKET, Binary, State),
-    {noreply, State};
-handle_cast(Msg, State) ->
-    ?LOG_ERROR("Unexpected cast ~p",[Msg]),
-    {noreply, State}.
+    State.
 
-handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
+tx_eap_msg(Binary, State) ->
+    do_eapol_send(?EAP_PACKET, Binary, State),
+    State.
+
+handle_data({Port, {data, Data}}, #state{port = Port} = State) ->
     try eapol_decode(Data) of
         {?EAP_PACKET, Packet} ->
             erl_supplicant_eap:rx_msg(Packet)
@@ -87,12 +74,7 @@ handle_info({Port, {data, Data}}, #state{port = Port} = State) ->
         error:E ->
             ?LOG_DEBUG("Error Decoding ~p",[E])
     end,
-    {noreply, State};
-handle_info(Msg, State) ->
-    ?LOG_ERROR("Unexpected info ~p",[Msg]),
-    {noreply, State}.
-
-
+    State.
 
 % INTERNALS --------------------------------------------------------------------
 

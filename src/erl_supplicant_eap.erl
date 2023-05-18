@@ -136,7 +136,7 @@ handle_responce(_, _, _, _) ->
 reply(Type, Args, Id) ->
     ?LOG_DEBUG("EAP replying ~p", [Id]),
     Binary = eap_encode(?Response, list_to_binary([Type | Args]), Id),
-    erl_supplicant_pdu:eap_msg(Binary).
+    erl_supplicant_pacp:eap_msg(Binary).
 
 eap_encode(Code, Data, Identifier) ->
     <<Code:8/unsigned,
