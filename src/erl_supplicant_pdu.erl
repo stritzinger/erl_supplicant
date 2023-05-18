@@ -9,7 +9,7 @@
 -export([handle_data/2]).
 -export([shutdown/1]).
 
--define(ETH_P_ALL, 16#0300).
+% -define(ETH_P_ALL, 16#0300).
 -include_lib("procket/include/packet.hrl").
 -define(ETH_P_EAPOL, 16#888e).
 -include_lib("pkt/include/pkt_802_1x.hrl").
@@ -39,7 +39,7 @@
 initialize() ->
     {ok, Interface} = application:get_env(erl_supplicant, interface),
     {ok, Fd} = procket:open(0, [
-        {protocol, ?ETH_P_ALL},
+        {protocol, 16#8e88}, %?ETH_P_EAPOL with switched bytes
         {type, raw},
         {family, packet}]),
     InterfaceIndex = packet:ifindex(Fd, Interface),
@@ -86,8 +86,9 @@ handle_data({Port, {data,<<_:6/binary, _:6/binary,
     end,
     State;
 handle_data({Port, {data, P}}, State) ->
-    % Ignoring other protocols
-    % ?LOG_DEBUG("Ignoring ETH packet: ~p",[P]),
+    % Ignoring other protocols,
+    % but anything other then EAPOL should not come from the socket
+    ?LOG_ERROR("Unexpected ETH packet: ~p",[P]),
     State.
 
 % INTERNALS --------------------------------------------------------------------
