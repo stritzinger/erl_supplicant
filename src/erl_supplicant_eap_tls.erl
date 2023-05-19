@@ -54,7 +54,9 @@
 -define(has_flag(Flags, F), ((Flags band F) /= 0) ).
 
 -define(start(F), ?has_flag(F, ?EAP_TLS_START)).
--define(is_fragment(F), ?has_flag(F, ?LENGTH) and
+-define(is_fragment_with_length(F), ?has_flag(F, ?LENGTH) and
+                        ?has_flag(F, ?MORE_FRAGMENTS)).
+-define(is_fragment_without_length(F), not ?has_flag(F, ?LENGTH) and
                         ?has_flag(F, ?MORE_FRAGMENTS)).
 -define(end_fragment(F), ?has_flag(F, ?LENGTH) and
                          (not ?has_flag(F, ?MORE_FRAGMENTS))).
@@ -149,10 +151,15 @@ do_handle_request(<<Flags:8/unsigned, _/binary>>, From, _S) when ?start(Flags) -
     trigger_tls_conversation(),
     {noreply, #state{pending_call = From, fragments = []}};
 do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
-                  _, #state{fragments = F} = S) when ?is_fragment(Flags) ->
-    ?LOG_DEBUG("EAP-TLS Fragment"),
+                  _, #state{fragments = F} = S) when ?is_fragment_with_length(Flags) ->
+    ?LOG_DEBUG("EAP-TLS Fragment with length"),
     EmptyFlags = <<0:8/unsigned>>,
     {reply, EmptyFlags, S#state{packet_length = Length, fragments = [Data | F]}};
+do_handle_request(<<Flags:8/unsigned, Data/binary>>,
+                  _, #state{fragments = F} = S) when ?is_fragment_without_length(Flags) ->
+    ?LOG_DEBUG("EAP-TLS Fragment without length"),
+    EmptyFlags = <<0:8/unsigned>>,
+    {reply, EmptyFlags, S#state{fragments = [Data | F]}};
 do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
                   From, #state{fragments = F, tls_client = Pid} = S)
                   when ?end_fragment(Flags) ->
