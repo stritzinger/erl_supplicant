@@ -14,7 +14,6 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
-%-define(ETH_P_ALL, 16#0300).
 -define(ETH_P_EAPOL, 16#888e).
 -define(PACKET_MR_MULTICAST, 0).
 -define(ETH_ALEN, 6).
@@ -41,7 +40,7 @@
 initialize() ->
     {ok, Interface} = application:get_env(erl_supplicant, interface),
     {ok, Fd} = procket:open(0, [
-        {protocol, 16#8e88}, %?ETH_P_EAPOL with switched bytes
+        {protocol, htons(?ETH_P_EAPOL)},
         {type, raw},
         {family, packet}]),
     InterfaceIndex = packet:ifindex(Fd, Interface),
@@ -151,3 +150,7 @@ get_mac_of_interface(Interface) ->
     [Opts|_] = [Opts || {Name, Opts} <- Interfaces, Name == Interface],
     {hwaddr, MAC} = proplists:lookup(hwaddr, Opts),
     list_to_binary(MAC).
+
+htons(Value) ->
+    <<Short:16/big>> = <<Value:16/native>>,
+    Short.
