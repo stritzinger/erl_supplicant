@@ -47,6 +47,7 @@ eap_fail() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 
 init(#{retry_max := Max}) ->
     Data = #data{
+        held_period = 1000,
         retry_count = 0,
         retry_max = Max
     },
