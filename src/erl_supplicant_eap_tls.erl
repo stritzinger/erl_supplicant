@@ -135,7 +135,7 @@ handle_cast({send, _}, #state{pending_call = none,
     {noreply, S};
 handle_cast({send, SSL_Message}, S) ->
     S1 = fragment_message(SSL_Message, S),
-    {noreply, send_chunk(S1)};
+    {noreply, send_first_chunk(S1)};
 handle_cast(Msg, S) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),
     {noreply, S}.
@@ -173,7 +173,7 @@ do_handle_request(<<Flags:8/unsigned, _Data/binary>>, From, S) when ?is_ack(Flag
     % empty requests are sent to receive the next fragment as reply
     % they act as ACK messages
     ?LOG_DEBUG("EAP-TLS ACK"),
-    {noreply, send_chunk(S#state{pending_call = From})}.
+    {noreply, send_next_chunk(S#state{pending_call = From})}.
 
 fragment_message(Message, #state{fragments = F} = S) ->
     Binary = list_to_binary(Message),
@@ -196,24 +196,23 @@ split(Binary, Max) ->
     end,
     F(Binary, []).
 
-% send_chunk(#state{pending_call = none,
-%                   packet_length = L,
-%                   fragments = [F|TL]} = S) ->
-%     Header = gen_chunk_header(L, TL),
-%     erl_supplicant_eap:tx_msg(eap_tls, [Header, F]),
-    % S#state{fragments = TL};
-send_chunk(#state{pending_call = From,
-                  packet_length = L,
-                  fragments = [F|TL]} = S) ->
-    Header = gen_chunk_header(L, TL),
+send_first_chunk(#state{fragments = [_Single]} = S) ->
+    Header = <<0:8>>,
+    send_chunk(Header, S);
+send_first_chunk(#state{ packet_length = L, fragments = _} = S) ->
+    Header = <<(?LENGTH bor ?MORE_FRAGMENTS):8, L:32/unsigned>>,
+    send_chunk(Header, S).
+
+send_next_chunk(#state{fragments = [_Last]} = S) ->
+    Header = <<0:8>>,
+    send_chunk(Header, S);
+send_next_chunk(#state{fragments = _} = S) ->
+    Header = <<(?MORE_FRAGMENTS):8>>,
+    send_chunk(Header, S).
+
+send_chunk(Header, #state{pending_call = From, fragments = [F|TL]} = S) ->
     gen_server:reply(From, [Header, F]),
     S#state{fragments = TL, pending_call = none}.
-
-gen_chunk_header(undefined, []) -> <<0:8>>;
-gen_chunk_header(L, []) -> <<(?LENGTH):8, L:32/unsigned>>;
-gen_chunk_header(PktLen, _RemainingFragments) ->
-        <<(?LENGTH bor ?MORE_FRAGMENTS):8, PktLen:32/unsigned>>.
-
 
 trigger_tls_conversation() ->
     UserOpts = application:get_env(erl_supplicant, eap_tls, []),
