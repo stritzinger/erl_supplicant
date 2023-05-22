@@ -45,9 +45,9 @@ eap_success() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 eap_fail() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 % gen_statem CALLBACKS ---------------------------------------------------------
 
-init(#{retry_max := Max}) ->
+init(#{retry_max := Max, held_period := HeldPeriod}) ->
     Data = #data{
-        held_period = 1000,
+        held_period = HeldPeriod,
         retry_count = 0,
         retry_max = Max
     },
