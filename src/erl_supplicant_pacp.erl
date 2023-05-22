@@ -47,6 +47,7 @@ eap_fail() -> gen_statem:cast(?MODULE, ?FUNCTION_NAME).
 
 init(#{retry_max := Max}) ->
     Data = #data{
+        held_period = 1000,
         retry_count = 0,
         retry_max = Max
     },
@@ -130,11 +131,10 @@ handle_event(cast, authenticate, held, _Data) ->
     {keep_state_and_data, [postpone]};
 
 % AUTHENTICATED
-handle_event(enter, _, authenticated, #data{pdu_state = PduState} = Data) ->
-    NewPduState = erl_supplicant_pdu:shutdown(PduState),
+handle_event(enter, _, authenticated, #data{} = Data) ->
     ?LOG_INFO("AUTHENTICATED"),
     erl_supplicant:authenticated(),
-    {keep_state, Data#data{retry_count = 0, pdu_state = NewPduState}};
+    {keep_state, Data#data{retry_count = 0}};
 handle_event(cast, eap_fail, authenticated, Data) ->
     {next_state, authenticating, Data};
 handle_event(cast, eap_success, authenticated, _) ->

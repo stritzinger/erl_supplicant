@@ -9,13 +9,14 @@
 -export([handle_data/2]).
 -export([shutdown/1]).
 
-% -define(ETH_P_ALL, 16#0300).
 -include_lib("procket/include/packet.hrl").
--define(ETH_P_EAPOL, 16#888e).
 -include_lib("pkt/include/pkt_802_1x.hrl").
-
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/assert.hrl").
+
+-define(ETH_P_EAPOL, 16#888e).
+-define(PACKET_MR_MULTICAST, 0).
+-define(ETH_ALEN, 6).
 
 -define(dot1Q, 16#01, 16#80, 16#c2, 16#00, 16#00).
 % From top to bottom:
@@ -39,11 +40,12 @@
 initialize() ->
     {ok, Interface} = application:get_env(erl_supplicant, interface),
     {ok, Fd} = procket:open(0, [
-        {protocol, 16#8e88}, %?ETH_P_EAPOL with switched bytes
+        {protocol, htons(?ETH_P_EAPOL)},
         {type, raw},
         {family, packet}]),
     InterfaceIndex = packet:ifindex(Fd, Interface),
-    packet:bind(Fd, InterfaceIndex),
+    ok = add_wired_multicast_membership(Fd, InterfaceIndex),
+    ok = packet:bind(Fd, InterfaceIndex),
     Port = erlang:open_port({fd, Fd, Fd}, [binary, stream]),
     {ok, #state{
         mac_addr = get_mac_of_interface(Interface),
@@ -51,6 +53,18 @@ initialize() ->
         socket = Fd,
         interface_index = InterfaceIndex}}.
 
+add_wired_multicast_membership(Fd, InterfaceIndex) ->
+    % struct packet_mreq
+    procket:setsockopt(Fd, ?SOL_PACKET, ?PACKET_ADD_MEMBERSHIP, <<
+        % mr_ifindex: interface index
+        InterfaceIndex:32/native-signed-integer,
+        % mr_type: action
+        ?PACKET_MR_MULTICAST:16/native-unsigned-integer,
+        % mr_alen: address length
+        ?ETH_ALEN:16/native-unsigned-integer,
+        % mr_address[8]:  physical layer address
+        ?NEAREST_NON_TPMR_BRIDGE/binary, 0, 0
+    >>).
 
 shutdown(#state{port = Port, socket = Fd}) ->
     erlang:port_close(Port),
@@ -75,20 +89,22 @@ handle_data({Port, {data,<<_:6/binary, _:6/binary,
                            ?ETH_P_EAPOL:16,
                            DGRAM/binary>>}},
             #state{port = Port} = State) ->
+    ?LOG_DEBUG("Received EAPOL packet",[]),
     try eapol_decode(DGRAM) of
         {?EAP_PACKET, Packet} ->
+            ?LOG_DEBUG("Decoded EAPOL packet",[]),
             erl_supplicant_eap:rx_msg(Packet);
         {Type, _Packet} ->
-            ?LOG_DEBUG("Unexpected packet type: ~p",[Type])
+            ?LOG_DEBUG("Unable to decode EAPOL packet with type: ~p",[Type])
     catch
         error:E ->
             ?LOG_DEBUG("Error Decoding ~p",[E])
     end,
     State;
-handle_data({Port, {data, P}}, State) ->
+handle_data({_Port, {data, P}}, State) ->
     % Ignoring other protocols,
     % but anything other then EAPOL should not come from the socket
-    ?LOG_ERROR("Unexpected ETH packet: ~p",[P]),
+    ?LOG_DEBUG("Unexpected ETH packet: ~p",[P]),
     State.
 
 % INTERNALS --------------------------------------------------------------------
@@ -134,3 +150,7 @@ get_mac_of_interface(Interface) ->
     [Opts|_] = [Opts || {Name, Opts} <- Interfaces, Name == Interface],
     {hwaddr, MAC} = proplists:lookup(hwaddr, Opts),
     list_to_binary(MAC).
+
+htons(Value) ->
+    <<Short:16/big>> = <<Value:16/native>>,
+    Short.
