@@ -135,6 +135,9 @@ handle_event(enter, _, authenticated, #data{} = Data) ->
     ?LOG_INFO("AUTHENTICATED"),
     erl_supplicant:authenticated(),
     {keep_state, Data#data{retry_count = 0}};
+handle_event(cast, {eap_msg, Bin}, authenticated, #data{pdu_state = PduState}) ->
+    erl_supplicant_pdu:tx_eap_msg(Bin, PduState),
+    keep_state_and_data;
 handle_event(cast, eap_fail, authenticated, Data) ->
     {next_state, authenticating, Data};
 handle_event(cast, eap_success, authenticated, _) ->
