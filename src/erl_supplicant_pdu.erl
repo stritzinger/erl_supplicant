@@ -89,10 +89,8 @@ handle_data({Port, {data,<<_:6/binary, _:6/binary,
                            ?ETH_P_EAPOL:16,
                            DGRAM/binary>>}},
             #state{port = Port} = State) ->
-    ?LOG_DEBUG("Received EAPOL packet",[]),
     try eapol_decode(DGRAM) of
         {?EAP_PACKET, Packet} ->
-            ?LOG_DEBUG("Decoded EAPOL packet",[]),
             erl_supplicant_eap:rx_msg(Packet);
         {Type, _Packet} ->
             ?LOG_DEBUG("Unable to decode EAPOL packet with type: ~p",[Type])

@@ -34,7 +34,8 @@
     tls_connection  :: undefined | ssl:sslsocket(),
     pending_call = none,
     packet_length,
-    fragments = []
+    fragments = [],
+    state           :: idle | receiving | sending
 }).
 % Find a clever way to determinate an appropriate MTU.
 % Assuming an MTU of 1024 bytes:
@@ -54,13 +55,8 @@
 -define(has_flag(Flags, F), ((Flags band F) /= 0) ).
 
 -define(start(F), ?has_flag(F, ?EAP_TLS_START)).
--define(is_fragment_with_length(F), ?has_flag(F, ?LENGTH) and
-                        ?has_flag(F, ?MORE_FRAGMENTS)).
--define(is_fragment_without_length(F), not ?has_flag(F, ?LENGTH) and
-                        ?has_flag(F, ?MORE_FRAGMENTS)).
--define(end_fragment(F), ?has_flag(F, ?LENGTH) and
-                         (not ?has_flag(F, ?MORE_FRAGMENTS))).
--define(is_ack(F), F == 0).
+-define(has_length(F), ?has_flag(F, ?LENGTH)).
+-define(is_fragment(F), ?has_flag(F, ?MORE_FRAGMENTS)).
 
 % API -------------------------------------------------------------------------
 
@@ -106,7 +102,7 @@ port(fake_socket) -> {ok, 0}.
 %% gen_server callbacks -------------------------------------------------------
 
 init([]) ->
-    {ok, #state{}}.
+    {ok, #state{state = idle}}.
 
 handle_call({handle_request, Binary}, From, _S) ->
     do_handle_request(Binary, From, _S);
@@ -135,7 +131,7 @@ handle_cast({send, _}, #state{pending_call = none,
     {noreply, S};
 handle_cast({send, SSL_Message}, S) ->
     S1 = fragment_message(SSL_Message, S),
-    {noreply, send_first_chunk(S1)};
+    {noreply, send_first_chunk(S1#state{state = sending})};
 handle_cast(Msg, S) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),
     {noreply, S}.
@@ -149,30 +145,49 @@ handle_info(Msg, S) ->
 do_handle_request(<<Flags:8/unsigned, _/binary>>, From, _S) when ?start(Flags) ->
     ?LOG_DEBUG("EAP-TLS Start"),
     trigger_tls_conversation(),
-    {noreply, #state{pending_call = From, fragments = []}};
-do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
-                  _, #state{fragments = F} = S) when ?is_fragment_with_length(Flags) ->
-    ?LOG_DEBUG("EAP-TLS Fragment with length"),
+    {noreply, #state{state = idle, pending_call = From, fragments = []}};
+do_handle_request(<<Flags:8/unsigned, L:32/unsigned, Data/binary>>, _,
+                  #state{state = idle, fragments = []} = S)
+when ?is_fragment(Flags) and ?has_length(Flags) ->
+    ?LOG_DEBUG("EAP-TLS First fragment received"),
     EmptyFlags = <<0:8/unsigned>>,
-    {reply, EmptyFlags, S#state{packet_length = Length, fragments = [Data | F]}};
+    {reply, EmptyFlags, S#state{state = receiving,
+                                packet_length = L,
+                                fragments = [Data]}};
+do_handle_request(<<Flags:8/unsigned, Data/binary>>, _,
+                 #state{state = receiving, packet_length = L, fragments = F} = S)
+when ?is_fragment(Flags) ->
+    ?LOG_DEBUG("EAP-TLS mid-fragment received"),
+    Payload = check_optional_length(Flags, Data, L),
+    EmptyFlags = <<0:8/unsigned>>,
+    {reply, EmptyFlags, S#state{fragments = [Payload | F]}};
 do_handle_request(<<Flags:8/unsigned, Data/binary>>,
-                  _, #state{fragments = F} = S) when ?is_fragment_without_length(Flags) ->
-    ?LOG_DEBUG("EAP-TLS Fragment without length"),
-    EmptyFlags = <<0:8/unsigned>>,
-    {reply, EmptyFlags, S#state{fragments = [Data | F]}};
+                  From, #state{state = receiving,
+                               packet_length = L,
+                               fragments = F,
+                               tls_client = Pid} = S)
+when not ?is_fragment(Flags) ->
+    ?LOG_DEBUG("EAP-TLS last fragment received"), % last fragment
+    Payload = check_optional_length(Flags, Data, L),
+    Binary = list_to_binary(lists:reverse([Payload|F])),
+    ?assertMatch(L, byte_size(Binary)),
+    Pid ! {eap, fake_socket, Binary}, % send to tls process
+    {noreply, S#state{state = idle,
+                      packet_length = undefined,
+                      fragments = [],
+                      pending_call = From}};
 do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
-                  From, #state{fragments = F, tls_client = Pid} = S)
-                  when ?end_fragment(Flags) ->
-    ?LOG_DEBUG("EAP-TLS Final"),
-    Binary = list_to_binary(lists:reverse([Data|F])),
-    ?assertMatch(Length, byte_size(Binary)),
-    % send to tls process
-    Pid ! {eap, fake_socket, Binary},
-    {noreply, S#state{packet_length = undefined,fragments = [], pending_call = From}};
-do_handle_request(<<Flags:8/unsigned, _Data/binary>>, From, S) when ?is_ack(Flags) ->
+                  From, #state{state = idle, tls_client = Pid} = S)
+when ?has_length(Flags) ->
+    ?LOG_DEBUG("EAP-TLS Single msg received"),
+    <<Binary:Length/binary, _/binary>> = Data,
+    Pid ! {eap, fake_socket, Binary}, % send to tls process
+    {noreply, S#state{pending_call = From}};
+do_handle_request(<<Flags:8/unsigned>>, From, #state{state = sending} = S)
+when Flags == 0 ->
     % empty requests are sent to receive the next fragment as reply
     % they act as ACK messages
-    ?LOG_DEBUG("EAP-TLS ACK"),
+    ?LOG_DEBUG("EAP-TLS ACK received"),
     {noreply, send_next_chunk(S#state{pending_call = From})}.
 
 fragment_message(Message, #state{fragments = F} = S) ->
@@ -197,15 +212,16 @@ split(Binary, Max) ->
     F(Binary, []).
 
 send_first_chunk(#state{fragments = [_Single]} = S) ->
+    % we do not send the length if the message needs only one fragment
     Header = <<0:8>>,
-    send_chunk(Header, S);
+    send_chunk(Header, S#state{state = idle});
 send_first_chunk(#state{ packet_length = L, fragments = _} = S) ->
     Header = <<(?LENGTH bor ?MORE_FRAGMENTS):8, L:32/unsigned>>,
     send_chunk(Header, S).
 
 send_next_chunk(#state{fragments = [_Last]} = S) ->
     Header = <<0:8>>,
-    send_chunk(Header, S);
+    send_chunk(Header, S#state{state = idle});
 send_next_chunk(#state{fragments = _} = S) ->
     Header = <<(?MORE_FRAGMENTS):8>>,
     send_chunk(Header, S).
@@ -236,3 +252,11 @@ trigger_tls_conversation() ->
                 gen_server:cast(?MODULE, {send, []})
         end
     end).
+
+check_optional_length(Flags, <<Length:32/unsigned, Rest/binary>>, OldL)
+when ?has_length(Flags)->
+    ?LOG_DEBUG("EAP-TLS checking length"),
+    ?assertEqual(OldL, Length),
+    Rest;
+check_optional_length(_, Binary, _) ->
+    Binary.
