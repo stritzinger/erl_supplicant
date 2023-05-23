@@ -20,7 +20,10 @@
 start_link(Opts) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Opts, []).
 
--spec authenticate() -> ok | {error, max_retry_reached | eap_fail}.
+-spec authenticate() -> ok |
+                        already_authenticating |
+                        already_authenticated |
+                        {error, max_retry_reached | eap_fail}.
 authenticate() -> gen_server:call(?MODULE, ?FUNCTION_NAME, 60_000).
 
 authenticated() -> gen_server:cast(?MODULE, ?FUNCTION_NAME).
@@ -37,9 +40,10 @@ init(#{auto := Auto}) ->
             erl_supplicant_pacp:authenticate(),
             {ok, {authenticating, self}};
         false ->
-            {ok, []}
+            {ok, unauthenticated}
     end.
-
+handle_call(authenticate, _, authenticated = S) ->
+    {reply, already_authenticated, S};
 handle_call(authenticate, _, {authenticating, _Caller} = S) ->
     {reply, already_authenticating, S};
 handle_call(authenticate, From, _State) ->
@@ -56,14 +60,14 @@ handle_cast(authenticated, State) ->
         {authenticating, Caller} ->
             gen_server:reply(Caller, ok)
     end,
-    {noreply, State};
+    {noreply, authenticated};
 handle_cast({failed, Reason}, {authenticating, Caller}) ->
     ?LOG_NOTICE("ERL_SUPP FAILED AUTHENTICATION"),
     case Caller of
         self -> ok;
         _ -> gen_server:reply(Caller, {error, Reason})
     end,
-    {noreply, []};
+    {noreply, unauthenticated};
 handle_cast(Msg, State) ->
     ?LOG_ERROR("Unexpected cast ~p",[Msg]),
     {noreply, State}.

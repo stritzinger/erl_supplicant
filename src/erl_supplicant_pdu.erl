@@ -72,12 +72,12 @@ shutdown(#state{port = Port, socket = Fd}) ->
     #state{}.
 
 tx_eapol_start(State) ->
-    ?LOG_INFO("EAPoL Start"),
+    ?LOG_DEBUG("EAPoL Start"),
     do_eapol_send(?EAPOL_START, <<>>, State),
     State.
 
 tx_eapol_logoff(State) ->
-    ?LOG_INFO("EAPoL LogOff"),
+    ?LOG_DEBUG("EAPoL LogOff"),
     do_eapol_send(?EAPOL_LOGOFF, <<>>, State),
     State.
 
