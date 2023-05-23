@@ -176,19 +176,25 @@ when not ?is_fragment(Flags) ->
                       packet_length = undefined,
                       fragments = [],
                       pending_call = From}};
-do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
-                  From, #state{state = idle, tls_client = Pid} = S)
-when ?has_length(Flags) ->
-    ?LOG_DEBUG("EAP-TLS Single msg received"),
-    <<Binary:Length/binary, _/binary>> = Data,
-    Pid ! {eap, fake_socket, Binary}, % send to tls process
-    {noreply, S#state{pending_call = From}};
 do_handle_request(<<Flags:8/unsigned>>, From, #state{state = sending} = S)
 when Flags == 0 ->
     % empty requests are sent to receive the next fragment as reply
     % they act as ACK messages
     ?LOG_DEBUG("EAP-TLS ACK received"),
-    {noreply, send_next_chunk(S#state{pending_call = From})}.
+    {noreply, send_next_chunk(S#state{pending_call = From})};
+do_handle_request(<<Flags:8/unsigned, Length:32/unsigned, Data/binary>>,
+                  From, #state{state = idle, tls_client = Pid} = S)
+when ?has_length(Flags) ->
+    ?LOG_DEBUG("EAP-TLS single msg with length received"),
+    <<Binary:Length/binary, _/binary>> = Data,
+    Pid ! {eap, fake_socket, Binary}, % send to tls process
+    {noreply, S#state{pending_call = From}};
+do_handle_request(<<Flags:8/unsigned, Data/binary>>,
+                  From, #state{state = idle, tls_client = Pid} = S)
+when Flags == 0 ->
+    ?LOG_DEBUG("EAP-TLS single msg without length received"),
+    Pid ! {eap, fake_socket, Data}, % send to tls process
+    {noreply, S#state{pending_call = From}}.
 
 fragment_message(Message, #state{fragments = F} = S) ->
     Binary = list_to_binary(Message),
