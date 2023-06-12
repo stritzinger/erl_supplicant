@@ -14,7 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 
 -record(state, {
-    identity        :: string(),
+    identity        :: undefined | string(),
     timeout         :: non_neg_integer(),
     eap_state       :: undefined | start | stop | timeout | fail | success,
     timeout_ref
@@ -53,15 +53,18 @@ rx_msg(Binary) -> gen_server:cast(?MODULE, {?FUNCTION_NAME, Binary}).
 
 % gen_server CALLBACKS ---------------------------------------------------------
 
-init(#{identity := Identity, timeout := Timeout}) ->
-    {ok, #state{identity = Identity, timeout = Timeout}}.
+init(#{timeout := Timeout}) ->
+    {ok, #state{timeout = Timeout}}.
 
 handle_call(eap_stop, _, S) ->
     erl_supplicant_eap_tls:stop(),
     {reply, ok, clear_timer(S#state{eap_state = stop})};
 handle_call(eap_start, _, #state{timeout = Timeout} = S) ->
+    % Getting env here to enable user to change it at runtime with set_env,
+    % TODO: make it a runtime option instead
+    {ok, Identity} = application:get_env(erl_supplicant, eap_identity),
     {ok, Tref} = timer:send_after(Timeout, timeout),
-    {reply, ok, S#state{eap_state = start, timeout_ref = Tref}};
+    {reply, ok, S#state{identity = Identity, eap_state = start, timeout_ref = Tref}};
 handle_call(Msg, From, S) ->
     ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),
     {reply, ok, S}.
