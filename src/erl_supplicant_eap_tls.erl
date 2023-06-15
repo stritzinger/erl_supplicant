@@ -7,6 +7,7 @@
 -export([start_link/0]).
 -export([handle_request/1]).
 -export([handle_responce/1]).
+-export([is_tls_enstablished/0]).
 -export([stop/0]).
 
 -behaviour(gen_server).
@@ -69,6 +70,9 @@ handle_request(Request) ->
 handle_responce(_) ->
     error(not_implemented).
 
+is_tls_enstablished() ->
+    gen_server:call(?MODULE, ?FUNCTION_NAME).
+
 stop() ->
     gen_server:cast(?MODULE, ?FUNCTION_NAME).
 
@@ -106,6 +110,11 @@ init([]) ->
 
 handle_call({handle_request, Binary}, From, _S) ->
     do_handle_request(Binary, From, _S);
+handle_call(is_tls_enstablished, _, #state{tls_connection = undefined} = S) ->
+    {reply, false, S};
+handle_call(is_tls_enstablished, _,
+            #state{tls_connection = {sslsocket, _, _}} = S) ->
+    {reply, true, S};
 handle_call(Msg, From, State) ->
     ?LOG_ERROR("Unexpected call ~p from ~p",[Msg, From]),
     {reply, error, State}.

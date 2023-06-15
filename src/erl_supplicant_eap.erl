@@ -113,10 +113,16 @@ process_msg(?Response, <<Type:8/unsigned, TypeData/binary>>, Id, S) ->
     ?LOG_DEBUG("EAP responce ~p type: ~p", [Id, Type]),
     handle_responce(Type, TypeData, Id, S);
 process_msg(?Success, <<>>, Id, S) ->
-    ?LOG_DEBUG("EAP SUCCESS:  ~p", [Id]),
-    erl_supplicant_pacp:eap_success(),
-    erl_supplicant_eap_tls:stop(),
-    clear_timer(S#state{eap_state = success});
+    case erl_supplicant_eap_tls:is_tls_enstablished() of
+        false ->
+            ?LOG_WARNING("Ignoring EAP SUCCESS: tls did not finish"),
+            S;
+        true ->
+            ?LOG_DEBUG("EAP SUCCESS:  ~p", [Id]),
+            erl_supplicant_pacp:eap_success(),
+            erl_supplicant_eap_tls:stop(),
+            clear_timer(S#state{eap_state = success})
+    end;
 process_msg(?Failure, <<>>, Id, S) ->
     ?LOG_DEBUG("EAP FAILURE:  ~p", [Id]),
     erl_supplicant_pacp:eap_fail(),
